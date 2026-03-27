@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ARB — Circuit Diagram Visualizer</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&display=swap');
+  *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+  :root {
+    --bg:#080b10; --surf:#0d1018; --brd:#182030; --brd2:#243040;
+    --text:#c8d8e8; --dim:#4a5a70; --mid:#7a90aa;
+    --acc:#40e8b0; --accd:#0d2a1e; --pur:#9878f8; --r:6px;
+  }
+  html,body { width:100%;height:100%;background:var(--bg);color:var(--text);
+    font-family:'IBM Plex Mono',monospace;overflow:hidden; }
+  #app { display:grid;grid-template-rows:48px 1fr;grid-template-columns:280px 1fr;
+    height:100vh;width:100vw; }
+  header { grid-column:1/-1;display:flex;align-items:center;gap:14px;padding:0 22px;
+    border-bottom:1px solid var(--brd);background:var(--surf); }
+  .logo { font-size:12px;font-weight:600;letter-spacing:.18em;color:var(--acc);text-transform:uppercase; }
+  .logo em { color:var(--dim);font-style:normal; }
+  .hline { flex:1;height:1px;background:var(--brd); }
+  .tag { font-size:9px;color:var(--dim);letter-spacing:.12em; }
+  #panel { border-right:1px solid var(--brd);background:var(--surf);
+    display:flex;flex-direction:column;padding:18px;gap:13px;overflow-y:auto; }
+  .lbl { font-size:9px;letter-spacing:.14em;color:var(--dim);text-transform:uppercase;margin-bottom:4px; }
+  textarea { width:100%;height:128px;background:var(--bg);border:1px solid var(--brd2);
+    border-radius:var(--r);color:var(--text);font-family:'IBM Plex Mono',monospace;
+    font-size:11px;line-height:1.65;padding:10px;resize:vertical;outline:none;transition:border-color .2s; }
+  textarea:focus { border-color:var(--acc); }
+  #rbtn { width:100%;padding:9px 0;background:var(--accd);border:1px solid var(--acc);
+    border-radius:var(--r);color:var(--acc);font-family:'IBM Plex Mono',monospace;
+    font-size:10px;letter-spacing:.14em;text-transform:uppercase;cursor:pointer;transition:background .15s,color .15s; }
+  #rbtn:hover { background:var(--acc);color:var(--bg); }
+  .err { font-size:10px;color:#e06050;background:#180a08;border:1px solid #3a1510;
+    border-radius:var(--r);padding:9px 11px;display:none;white-space:pre-wrap;line-height:1.5; }
+  .stats { display:flex;flex-direction:column;gap:6px; }
+  .sr { display:flex;justify-content:space-between;font-size:10px; }
+  .sk { color:var(--dim); } .sv { color:var(--pur);font-weight:500; }
+  .leg { display:flex;flex-direction:column;gap:7px; }
+  .li { display:flex;align-items:center;gap:9px;font-size:10px;color:var(--mid); }
+  .ld { width:8px;height:8px;border-radius:50%;flex-shrink:0; }
+  .lw { width:24px;height:1.5px;border-radius:1px;flex-shrink:0; }
+  .div { height:1px;background:var(--brd); }
+  #cw { position:relative;overflow:hidden;background:var(--bg);
+    background-image:linear-gradient(var(--brd) 1px,transparent 1px),
+      linear-gradient(90deg,var(--brd) 1px,transparent 1px);
+    background-size:28px 28px; }
+  #cw svg { position:absolute;top:0;left:0;transform-origin:top left;cursor:grab; }
+  #cw svg:active { cursor:grabbing; }
+  .ctrls { position:absolute;bottom:18px;right:18px;display:flex;gap:7px;flex-direction:column;z-index:10; }
+  .cb { width:32px;height:32px;background:var(--surf);border:1px solid var(--brd2);
+    border-radius:var(--r);color:var(--mid);font-size:15px;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;transition:border-color .2s,color .2s;font-family:monospace; }
+  .cb:hover { border-color:var(--acc);color:var(--acc); }
+  .empty { position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:10px;color:var(--dim);pointer-events:none; }
+  .ei { font-size:36px;opacity:.1; } .et { font-size:10px;letter-spacing:.1em;opacity:.3; }
+  .hint { font-size:9px;color:var(--dim);line-height:1.9; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="logo">ARB <em>·</em> Circuit Visualizer</div>
+    <div class="hline"></div>
+    <div class="tag">LEFT → RIGHT · BUNDLED WIRES · LOGIC GATE SCHEMATIC</div>
+  </header>
+  <div id="panel">
+    <div>
+      <div class="lbl">Expression</div>
+      <textarea id="inp" spellcheck="false" placeholder="Arb(x, Arb(y, x))"></textarea>
+    </div>
+    <div id="err" class="err"></div>
+    <button id="rbtn">⊢ Render Circuit</button>
+    <div class="div"></div>
+    <div>
+      <div class="lbl">Statistics</div>
+      <div class="stats">
+        <div class="sr"><span class="sk">Gates</span><span class="sv" id="sg">—</span></div>
+        <div class="sr"><span class="sk">Depth</span><span class="sv" id="sd">—</span></div>
+        <div class="sr"><span class="sk">Unique inputs</span><span class="sv" id="sv">—</span></div>
+        <div class="sr"><span class="sk">Total nodes</span><span class="sv" id="sn">—</span></div>
+      </div>
+    </div>
+    <div class="div"></div>
+    <div>
+      <div class="lbl">Legend</div>
+      <div class="leg">
+        <div class="li">
+          <svg width="38" height="22" viewBox="0 0 38 22" style="flex-shrink:0">
+            <path d="M2,2 L15,2 C28,2 30,11 30,11 C30,11 28,20 15,20 L2,20 Z"
+              fill="#0b1520" stroke="#2a5080" stroke-width="1.2"/>
+            <line x1="0" y1="7"  x2="2" y2="7"  stroke="#4a90d0" stroke-width="1.2"/>
+            <line x1="0" y1="15" x2="2" y2="15" stroke="#4a90d0" stroke-width="1.2"/>
+            <line x1="30" y1="11" x2="38" y2="11" stroke="#40e8b0" stroke-width="1.2"/>
+          </svg>
+          <span>ARB gate</span>
+        </div>
+        <div class="li"><div class="ld" style="background:#f0b040"></div><span>Input terminal</span></div>
+        <div class="li"><div class="ld" style="background:#40e8b0"></div><span>Output</span></div>
+        <div class="li"><div class="lw" style="background:#4a90d0"></div><span>Signal wire</span></div>
+        <div class="li"><div class="lw" style="background:#4a90d0;border-top:1px dashed #4a90d0;background:none"></div><span>Bus</span></div>
+      </div>
+    </div>
+    <div class="div"></div>
+    <div class="hint">Drag · Scroll zoom<br>+ / − · R to fit · Enter</div>
+  </div>
+  <div id="cw">
+    <div class="empty" id="empty"><div class="ei">⊢</div><div class="et">ENTER AN EXPRESSION AND RENDER</div></div>
+    <svg id="svg"></svg>
+    <div class="ctrls">
+      <button class="cb" id="zi">+</button>
+      <button class="cb" id="zo">−</button>
+      <button class="cb" id="zf">⊡</button>
+    </div>
+  </div>
+</div>
+<script>
+// ═══════════════════════════════════════════════
+// PARSER
+// ═══════════════════════════════════════════════
+function parse(src) {
+  src = src.trim(); let p = 0;
+  const ws = () => { while (p < src.length && /\s/.test(src[p])) p++; };
+  function expr() {
+    ws();
+    if (src.startsWith('Arb', p)) {
+      p += 3; ws();
+      if (src[p] !== '(') throw new Error(`Expected '(' at ${p}`);
+      p++; ws();
+      const L = expr(); ws();
+      if (src[p] !== ',') throw new Error(`Expected ',' at ${p}`);
+      p++; ws();
+      const R = expr(); ws();
+      if (src[p] !== ')') throw new Error(`Expected ')' at ${p}`);
+      p++;
+      return { type:'gate', left:L, right:R };
+    }
+    const m = src.slice(p).match(/^[A-Za-z_]\w*/);
+    if (m) { p += m[0].length; return { type:'var', name:m[0] }; }
+    throw new Error(`Unexpected '${src.slice(p,p+10)}' at ${p}`);
+  }
+  const t = expr(); ws();
+  if (p !== src.length) throw new Error(`Trailing input at ${p}`);
+  return t;
+}
+
+const countGates = n => n.type==='var'?0:1+countGates(n.left)+countGates(n.right);
+const treeDepth  = n => n.type==='var'?0:1+Math.max(treeDepth(n.left),treeDepth(n.right));
+const countNodes = n => n.type==='var'?1:1+countNodes(n.left)+countNodes(n.right);
+function collectVars(n, s=new Set()) {
+  if (n.type==='var') s.add(n.name);
+  else { collectVars(n.left,s); collectVars(n.right,s); }
+  return s;
+}
+
+// ═══════════════════════════════════════════════
+// LAYOUT
+// Gate dimensions
+// ═══════════════════════════════════════════════
+const GW = 52, GH = 40;
+// Horizontal gap between columns, vertical gap between gate rows
+const HGAP = 56, VGAP = 24;
+
+// Assign column: root = col 0 (rightmost), children = col+1
+function assignCols(n, c=0) {
+  n.col = c;
+  if (n.type==='gate') { assignCols(n.left,c+1); assignCols(n.right,c+1); }
+}
+
+// Assign row by in-order traversal of gates only
+// This makes wires naturally non-crossing
+let _row = 0;
+function assignRows(n) {
+  if (n.type==='var') { n.row=null; return; }
+  assignRows(n.left);
+  n.row = _row++;
+  assignRows(n.right);
+}
+
+// Gate center-y in pixels
+function gateY(n) { return n.row * (GH + VGAP); }
+// Gate left-x in pixels (given maxCol and RAIL_W offset)
+function gateX(n, maxCol, offsetX) { return offsetX + (maxCol - n.col) * (GW + HGAP); }
+
+// Port positions
+const portA  = (gx,gy) => ({ x:gx,      y:gy + GH*0.28 });
+const portB  = (gx,gy) => ({ x:gx,      y:gy + GH*0.72 });
+const portOut= (gx,gy) => ({ x:gx+GW,   y:gy + GH*0.5  });
+
+// ═══════════════════════════════════════════════
+// SVG HELPERS
+// ═══════════════════════════════════════════════
+const NS='http://www.w3.org/2000/svg';
+function el(tag,a={},ch=[]) {
+  const e=document.createElementNS(NS,tag);
+  for(const[k,v]of Object.entries(a)) e.setAttribute(k,v);
+  for(const c of ch) if(c) e.appendChild(c);
+  return e;
+}
+function T(s,a) { const t=el('text',a); t.textContent=s; return t; }
+
+// ═══════════════════════════════════════════════
+// DRAW D-SHAPED GATE
+// ═══════════════════════════════════════════════
+function drawGate(layer, gx, gy) {
+  const x0=gx, y0=gy, y1=gy+GH, cx=gx+GW, cy=gy+GH/2;
+  const nk = GW*0.48; // neck inset
+  // D-shape: flat left, cubic bezier right
+  const d=`M${x0},${y0} L${x0+nk},${y0} C${cx+GW*.2},${y0} ${cx+GW*.2},${y1} ${x0+nk},${y1} L${x0},${y1} Z`;
+  layer.appendChild(el('path',{d,fill:'rgba(42,96,160,0.08)',transform:'translate(1.5,1.5)'}));
+  layer.appendChild(el('path',{d,fill:'#0b1520',stroke:'#2a5080','stroke-width':'1.3'}));
+  // left face accent
+  layer.appendChild(el('line',{x1:x0,y1:y0+4,x2:x0,y2:y1-4,stroke:'#3a78b8','stroke-width':'1.8','stroke-linecap':'round',opacity:'.3'}));
+  layer.appendChild(T('ARB',{x:x0+GW*.3,y:cy+4,'text-anchor':'middle',fill:'#5090c8',
+    'font-size':'8','font-family':'IBM Plex Mono,monospace','font-weight':'600','letter-spacing':'2'}));
+}
+
+// ═══════════════════════════════════════════════
+// WIRE ROUTING  — orthogonal, right-angle only
+// We route: horizontal from src, then vertical, then horizontal to dst
+// ═══════════════════════════════════════════════
+function wireD(x1,y1,x2,y2,midX) {
+  // midX is where the vertical jog happens
+  if (Math.abs(y1-y2)<0.5) return `M${x1},${y1}H${x2}`;
+  const mx = midX !== undefined ? midX : x1+(x2-x1)*0.5;
+  return `M${x1},${y1}H${mx}V${y2}H${x2}`;
+}
+
+// ═══════════════════════════════════════════════
+// MAIN RENDER
+// ═══════════════════════════════════════════════
+const PAD=30;
+const PALETTE=['#f0b040','#9878f8','#40e8b0','#f05878','#40c0f0','#e0e840','#f07040','#a0e880'];
+
+function render(exprStr) {
+  const svg=document.getElementById('svg');
+  const errEl=document.getElementById('err');
+  errEl.style.display='none';
+
+  let tree;
+  try { tree=parse(exprStr); }
+  catch(e) { errEl.textContent='⚠ '+e.message; errEl.style.display='block'; return; }
+
+  // Layout pass
+  assignCols(tree,0);
+  _row=0; assignRows(tree);
+  const numGates=_row;
+
+  let maxCol=0;
+  const wmc=n=>{if(n.col>maxCol)maxCol=n.col;if(n.type==='gate'){wmc(n.left);wmc(n.right);}};
+  wmc(tree);
+
+  // Unique vars in first-appearance order
+  const varNames=[];
+  const varSeen=new Set();
+  function collectOrder(n) {
+    if(n.type==='var'){if(!varSeen.has(n.name)){varSeen.add(n.name);varNames.push(n.name);}}
+    else{collectOrder(n.left);collectOrder(n.right);}
+  }
+  collectOrder(tree);
+
+  // Pixel layout constants
+  // Input terminals sit at far left. Each var gets one terminal.
+  // A vertical bus runs from the terminal into the circuit.
+  // Wires branch off the bus to each gate that needs this input.
+  const TERM_W   = 24;   // terminal box width
+  const TERM_H   = 18;   // terminal box height
+  const BUS_X_BASE = 18; // center-x of bus for first var; spaced by BUS_SPACING
+  const BUS_SPACING = 28;// spacing between parallel bus lines
+  const OFFSET_X = BUS_X_BASE + varNames.length*BUS_SPACING + 20; // where gate columns start
+
+  // Assign gate pixel coords
+  function px(n) {
+    if(n.type!=='gate') return;
+    n.gx = OFFSET_X + (maxCol - n.col)*(GW+HGAP);
+    n.gy = gateY(n);
+    px(n.left); px(n.right);
+  }
+  px(tree);
+
+  // Total canvas size
+  const totalGateH = numGates*(GH+VGAP) - VGAP;
+  const totalW = OFFSET_X + (maxCol+1)*(GW+HGAP) - HGAP + GW + 70;
+  const totalH = Math.max(totalGateH + GH, 60);
+
+  const W=totalW+PAD*2, H=totalH+PAD*2;
+
+  // Shift all gates by PAD
+  function shift(n){
+    if(n.type==='gate'){n.gx+=PAD;n.gy+=PAD;shift(n.left);shift(n.right);}
+  }
+  shift(tree);
+
+  // Clear SVG
+  while(svg.firstChild) svg.removeChild(svg.firstChild);
+  svg.setAttribute('width',W);
+  svg.setAttribute('height',H);
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+
+  // Layers
+  const busLayer  = el('g'); // vertical bus lines (bottom)
+  const wireLayer = el('g'); // signal wires
+  const gateLayer = el('g'); // gate shapes
+  const dotLayer  = el('g'); // junction dots and port dots
+  const lblLayer  = el('g'); // text labels on top
+  svg.appendChild(busLayer);
+  svg.appendChild(wireLayer);
+  svg.appendChild(gateLayer);
+  svg.appendChild(dotLayer);
+  svg.appendChild(lblLayer);
+
+  // ─── For each var, collect ALL gate ports that need it ───
+  // We walk the tree and for each var leaf, record its parent's
+  // port position so we know exactly which y-coordinates need tapping.
+  // We then draw ONE bus line and branch from it — no duplicate taps.
+
+  // Map: varName → array of {x, y} port positions that connect to it
+  const varPorts = {};
+  varNames.forEach(v => varPorts[v]=[]);
+
+  function collectPorts(n) {
+    if (n.type !== 'gate') return;
+    const pA = portA(n.gx, n.gy);
+    const pB = portB(n.gx, n.gy);
+    if (n.left.type  === 'var') varPorts[n.left.name ].push(pA);
+    if (n.right.type === 'var') varPorts[n.right.name].push(pB);
+    collectPorts(n.left);
+    collectPorts(n.right);
+  }
+  collectPorts(tree);
+
+  // ─── Draw input terminals and busses ───
+  varNames.forEach((name, i) => {
+    const col = PALETTE[i % PALETTE.length];
+    const busX = PAD + BUS_X_BASE + i*BUS_SPACING; // bus center x (absolute)
+    const ports = varPorts[name];
+    if (ports.length === 0) return;
+
+    const allY   = ports.map(p=>p.y);
+    const minY   = Math.min(...allY);
+    const maxY   = Math.max(...allY);
+    const termY  = PAD + (i * (TERM_H + 10)); // stacked terminals at top-left
+
+    // Terminal box
+    const tx = PAD + 4;
+    busLayer.appendChild(el('rect',{
+      x:tx, y:termY, width:TERM_W, height:TERM_H,
+      rx:'2', fill:'#080c12', stroke:col, 'stroke-width':'1.3'
+    }));
+    lblLayer.appendChild(T(name,{
+      x:tx+TERM_W/2, y:termY+TERM_H*0.68,
+      'text-anchor':'middle', fill:col,
+      'font-size':'10','font-family':'IBM Plex Mono,monospace','font-weight':'500'
+    }));
+
+    // Wire from terminal down/right to bus x
+    const termRX = tx + TERM_W;
+    const termCY = termY + TERM_H/2;
+    busLayer.appendChild(el('path',{
+      d:`M${termRX},${termCY}H${busX}V${minY}`,
+      fill:'none', stroke:col, 'stroke-width':'1', opacity:'.55'
+    }));
+
+    // Vertical bus segment spanning all taps
+    busLayer.appendChild(el('line',{
+      x1:busX, y1:minY, x2:busX, y2:maxY,
+      stroke:col, 'stroke-width':'1.4', opacity:'.7'
+    }));
+
+    // Horizontal branch from bus to each port
+    ports.forEach(p => {
+      wireLayer.appendChild(el('line',{
+        x1:busX, y1:p.y, x2:p.x, y2:p.y,
+        stroke:col, 'stroke-width':'1.3'
+      }));
+      // junction dot on bus
+      dotLayer.appendChild(el('circle',{cx:busX,cy:p.y,r:2.8,fill:col,opacity:'.9'}));
+    });
+  });
+
+  // ─── Draw gates and gate-to-gate wires ───
+  const drawn = new Set();
+  function drawAll(n) {
+    if (n.type !== 'gate' || drawn.has(n)) return;
+    drawn.add(n);
+    drawGate(gateLayer, n.gx, n.gy);
+
+    const pA = portA(n.gx,n.gy);
+    const pB = portB(n.gx,n.gy);
+    const pO = portOut(n.gx,n.gy);
+
+    // Port dots
+    dotLayer.appendChild(el('circle',{cx:pA.x,cy:pA.y,r:2.2,fill:'#3a78b8'}));
+    dotLayer.appendChild(el('circle',{cx:pB.x,cy:pB.y,r:2.2,fill:'#3a78b8'}));
+    dotLayer.appendChild(el('circle',{cx:pO.x,cy:pO.y,r:2.8,fill:'#40e8b0',opacity:'.85'}));
+
+    // Connect gate children that are gates (var children handled via bus above)
+    if (n.left.type === 'gate') {
+      drawAll(n.left);
+      const co = portOut(n.left.gx,n.left.gy);
+      // midpoint for the jog: halfway between child output and this gate's left edge
+      const midX = co.x + (pA.x - co.x)*0.5;
+      wireLayer.appendChild(el('path',{
+        d:wireD(co.x,co.y,pA.x,pA.y,midX),
+        fill:'none',stroke:'#2a6090','stroke-width':'1.4',
+        'stroke-linecap':'round','stroke-linejoin':'round'
+      }));
+    } else {
+      drawAll(n.left); // var — nothing extra needed (bus handles it)
+    }
+    if (n.right.type === 'gate') {
+      drawAll(n.right);
+      const co = portOut(n.right.gx,n.right.gy);
+      const midX = co.x + (pB.x - co.x)*0.5;
+      wireLayer.appendChild(el('path',{
+        d:wireD(co.x,co.y,pB.x,pB.y,midX),
+        fill:'none',stroke:'#2a6090','stroke-width':'1.4',
+        'stroke-linecap':'round','stroke-linejoin':'round'
+      }));
+    } else {
+      drawAll(n.right);
+    }
+  }
+  drawAll(tree);
+
+  // ─── Output terminal ───
+  const op = portOut(tree.gx, tree.gy);
+  const outEnd = op.x + 34;
+  wireLayer.appendChild(el('line',{x1:op.x,y1:op.y,x2:outEnd,y2:op.y,stroke:'#40e8b0','stroke-width':'1.8'}));
+  lblLayer.appendChild(el('polygon',{
+    points:`${outEnd},${op.y-4} ${outEnd+9},${op.y} ${outEnd},${op.y+4}`,
+    fill:'#40e8b0',opacity:'.9'
+  }));
+  lblLayer.appendChild(T('OUT',{x:outEnd+14,y:op.y+4,fill:'#40e8b0','font-size':'9',
+    'font-family':'IBM Plex Mono,monospace','font-weight':'600','letter-spacing':'1.5'}));
+
+  document.getElementById('empty').style.display='none';
+
+  // Stats
+  const vars=collectVars(tree);
+  document.getElementById('sg').textContent=countGates(tree);
+  document.getElementById('sd').textContent=treeDepth(tree);
+  document.getElementById('sv').textContent=[...vars].join(', ');
+  document.getElementById('sn').textContent=countNodes(tree);
+
+  fitToView(W,H);
+}
+
+// ═══════════════════════════════════════════════
+// PAN / ZOOM
+// ═══════════════════════════════════════════════
+let tx=0,ty=0,sc=1;
+const wrap=document.getElementById('cw');
+const svgEl=document.getElementById('svg');
+const applyT=()=>svgEl.style.transform=`translate(${tx}px,${ty}px) scale(${sc})`;
+
+function fitToView(W,H){
+  const cw=wrap.clientWidth,ch=wrap.clientHeight;
+  sc=Math.min(cw/(W+20),ch/(H+20),2)*.88;
+  tx=(cw-W*sc)/2; ty=Math.max(16,(ch-H*sc)/2);
+  applyT();
+}
+let drag=false,dx0=0,dy0=0;
+wrap.addEventListener('mousedown',e=>{drag=true;dx0=e.clientX-tx;dy0=e.clientY-ty;});
+window.addEventListener('mousemove',e=>{if(!drag)return;tx=e.clientX-dx0;ty=e.clientY-dy0;applyT();});
+window.addEventListener('mouseup',()=>{drag=false;});
+wrap.addEventListener('wheel',e=>{
+  e.preventDefault();
+  const f=e.deltaY<0?1.1:.91;
+  const r=wrap.getBoundingClientRect();
+  const mx=e.clientX-r.left,my=e.clientY-r.top;
+  tx=mx-(mx-tx)*f;ty=my-(my-ty)*f;sc*=f;applyT();
+},{passive:false});
+const zoom=f=>{const cx=wrap.clientWidth/2,cy=wrap.clientHeight/2;tx=cx-(cx-tx)*f;ty=cy-(cy-ty)*f;sc*=f;applyT();};
+document.getElementById('zi').onclick=()=>zoom(1.2);
+document.getElementById('zo').onclick=()=>zoom(.82);
+document.getElementById('zf').onclick=()=>{
+  const w=+svgEl.getAttribute('width')||400,h=+svgEl.getAttribute('height')||300;
+  fitToView(w,h);
+};
+document.addEventListener('keydown',e=>{
+  if(e.target===document.getElementById('inp'))return;
+  if(e.key==='+'||e.key==='=')zoom(1.2);
+  if(e.key==='-')zoom(.82);
+  if(e.key==='r'||e.key==='R')document.getElementById('zf').click();
+  if(e.key==='Enter')document.getElementById('rbtn').click();
+});
+document.getElementById('rbtn').addEventListener('click',()=>render(document.getElementById('inp').value));
+
+// Init
+const EX=`Arb(Arb(Arb(y, Arb(Arb(x,y), Arb(x,y))), Arb(Arb(Arb(x,y), Arb(x,y)), Arb(x,y))), Arb(Arb(x, Arb(x, Arb(x,y))), Arb(Arb(y, Arb(x,y)), Arb(x, x))))`;
+document.getElementById('inp').value=EX;
+window.addEventListener('load',()=>setTimeout(()=>render(EX),80));
+</script>
+</body>
+</html>
