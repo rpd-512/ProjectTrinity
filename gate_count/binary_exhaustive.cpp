@@ -20,10 +20,13 @@ int main()
 
     print_matrix(Arb);
 
+    auto start = high_resolution_clock::now();
     bool found = nand_search(
         Arb,
         ExhaustMode::DEBUG_MODE   // change to FAST_MODE if needed
     );
+    auto duration = duration_cast<microseconds>(high_resolution_clock::now() - start);
+    cout << "\nExecution time: " << duration.count() << " microseconds\n";
 
     if(found)
         cout << "\nResult: NAND is constructible.\n";

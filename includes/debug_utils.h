@@ -27,16 +27,6 @@ static inline void print_trit(wire t) {
     }
 }
 
-template<typename Func>
-static inline void print_matrix(Func gate){
-    for (int i = 0; i < 3; i++) {
-        for (int j = 0; j < 3; j++) {
-            print_trit(gate(i, j));
-            printf(" ");
-        }
-        printf("\n");
-    }
-}
 
 static inline void print_vector(const vector<wire>& v){
     printf("[ ");
@@ -76,17 +66,51 @@ vector<wire> get_vector(Gate f)
     }
 }
 
-template<typename F>
+template<typename Gate>
+static inline void print_matrix(Gate gate){
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            print_trit(gate(i,j));
+            printf(" ");
+        }
+        printf("\n");
+    }
+}
+
+static inline void print_matrix_new(vector<wire> gate){
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            print_trit(gate[3*i + j]);
+            printf(" ");
+        }
+        printf("\n");
+    }
+}
+
+template<typename Gate>
 vector<wire> compose(const vector<wire>& f,
                      const vector<wire>& g,
-                     F Arb)
+                     Gate Arb)
 {
     vector<wire> h(3);
     for(int i = 0; i < 3; i++){
-        h[i] = Arb(f[i], g[i]);
+        h[i] = Arb(f[i],g[i]);
     }
     return h;
 }
+
+vector<wire> compose_new(const vector<wire>& f,
+                     const vector<wire>& g,
+                     vector<wire> Arb)
+{
+    size_t n = f.size();
+    vector<wire> h(n);
+    for(int i = 0; i < n; i++){
+        h[i] = Arb[3*f[i] + g[i]];
+    }
+    return h;
+}
+
 
 bool is_delta(const vector<wire>& v){
     return
