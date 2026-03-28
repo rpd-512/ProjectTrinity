@@ -66,18 +66,7 @@ vector<wire> get_vector(Gate f)
     }
 }
 
-template<typename Gate>
-static inline void print_matrix(Gate gate){
-    for (int i = 0; i < 3; i++) {
-        for (int j = 0; j < 3; j++) {
-            print_trit(gate(i,j));
-            printf(" ");
-        }
-        printf("\n");
-    }
-}
-
-static inline void print_matrix_new(vector<wire> gate){
+static inline void print_matrix(vector<wire> gate){
     for (int i = 0; i < 3; i++) {
         for (int j = 0; j < 3; j++) {
             print_trit(gate[3*i + j]);
@@ -87,19 +76,7 @@ static inline void print_matrix_new(vector<wire> gate){
     }
 }
 
-template<typename Gate>
 vector<wire> compose(const vector<wire>& f,
-                     const vector<wire>& g,
-                     Gate Arb)
-{
-    vector<wire> h(3);
-    for(int i = 0; i < 3; i++){
-        h[i] = Arb(f[i],g[i]);
-    }
-    return h;
-}
-
-vector<wire> compose_new(const vector<wire>& f,
                      const vector<wire>& g,
                      vector<wire> Arb)
 {

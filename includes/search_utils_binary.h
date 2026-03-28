@@ -12,6 +12,7 @@
 #include "search_utils_unary.h"
 
 template<typename Func>
+
 vector<wire> get_binary_vector(Func f)
 {
     vector<wire> v(9);
@@ -26,23 +27,11 @@ vector<wire> get_binary_vector(Func f)
     return v;
 }
 
-struct VectorHash
-{
-    size_t operator()(const vector<wire>& v) const{
-        size_t h = 0;
-        for (auto x : v)
-            h = h * 3 + (int)x;
-        return h;
-    }
-};
-
-template<typename ArbFunc>
 int gate_search(
-    ArbFunc Arb,
-    vector<wire> target,
+    vector<wire> Arb, // Arbitrary Function
+    vector<wire> Tgt, // Target function to generate
     ExhaustMode mode = ExhaustMode::FAST_MODE,
     unordered_set<vector<wire>, VectorHash> memo = {},
-    bool constant_basis = true,
     bool debug_print = false)
 {
     const bool DEBUG = (mode == ExhaustMode::DEBUG_MODE);
@@ -51,23 +40,7 @@ int gate_search(
     auto P1 = [](wire a, wire b){ return a; };
     auto P2 = [](wire a, wire b){ return b; };
 
-    auto Cn = [](wire a, wire b){ return T_NEG; };
-    auto Cz = [](wire a, wire b){ return T_ZERO; };
-    auto Cp = [](wire a, wire b){ return T_POS; };
-
-    auto G  = [Arb](wire a, wire b){ return Arb(a,b); };
-
-    auto compose_binary =
-    [&](const vector<wire>& f,
-        const vector<wire>& g)
-    {
-        vector<wire> h(9);
-
-        for(int i = 0; i < 9; i++)
-            h[i] = Arb(f[i], g[i]);
-
-        return h;
-    };
+    auto G  = [Arb](wire a, wire b){ return Arb[a * 3 + b]; };
 
     if (DEBUG)
     {
@@ -76,18 +49,13 @@ int gate_search(
 
         S[get_binary_vector(P1)] = {"x",        0};
         S[get_binary_vector(P2)] = {"y",        0};
-        if (constant_basis) {
-            S[get_binary_vector(Cn)] = {"-",    0};
-            S[get_binary_vector(Cz)] = {"0",    0};
-            S[get_binary_vector(Cp)] = {"+",    0};
-        }
         S[get_binary_vector(G)]  = {"Arb(x,y)", 1};
 
         for (const auto& p : S)
         {
             const auto& [expr, d] = p.second;
 
-            if (p.first == target)
+            if (p.first == Tgt)
             {
                 if(debug_print){
                     printf("\n===== TARGET FOUND =====\n");
@@ -133,7 +101,7 @@ int gate_search(
             for (const auto& p1 : current)
             for (const auto& p2 : current)
             {
-                auto h = compose_binary(p1.first, p2.first);
+                auto h = compose(p1.first, p2.first, Arb);
                 int d = p1.second.second + p2.second.second + 1;
                 string expr = "Arb(" + p1.second.first + ", " + p2.second.first + ")";
                 if (S.find(h) == S.end())
@@ -142,7 +110,7 @@ int gate_search(
                     S[h] = {expr, d};
                     changed = true;
 
-                    if (h == target)
+                    if (h == Tgt)
                     {
                         if(debug_print){
                             printf("\n===== TARGET FOUND =====\n");
@@ -197,16 +165,11 @@ int gate_search(
 
         S[get_binary_vector(P1)] = 0;
         S[get_binary_vector(P2)] = 0;
-        if (constant_basis) {
-            S[get_binary_vector(Cn)] = 0;
-            S[get_binary_vector(Cz)] = 0;
-            S[get_binary_vector(Cp)] = 0;
-        }
         S[get_binary_vector(G)] = 1;
 
         for (const auto& p : S)
         {
-            if (p.first == target || memo.count(p.first))
+            if (p.first == Tgt || memo.count(p.first))
                 return p.second;
         }
 
@@ -222,14 +185,14 @@ int gate_search(
             for (const auto& [f, df] : current)
             for (const auto& [g, dg] : current)
             {
-                auto h = compose_binary(f, g);
+                auto h = compose(f, g, Arb);
 
                 int d = df + dg + 1;
                 if (!S.count(h)){
                     S[h] = d;
                     changed = true;
 
-                    if (h == target || memo.count(h))
+                    if (h == Tgt || memo.count(h))
                         return d;
 
                     if (S.size() == 19683)
@@ -251,15 +214,10 @@ int gate_search(
 
         S.insert(get_binary_vector(P1));
         S.insert(get_binary_vector(P2));
-        if (constant_basis) {
-            S.insert(get_binary_vector(Cn));
-            S.insert(get_binary_vector(Cz));
-            S.insert(get_binary_vector(Cp));
-        }
         S.insert(get_binary_vector(G));
 
         for (const auto& p : S)
-            if (p == target || memo.count(p))
+            if (p == Tgt || memo.count(p))
                 return 1;
 
         bool changed = true;
@@ -273,11 +231,11 @@ int gate_search(
             for (const auto& f : current)
             for (const auto& g : current)
             {
-                auto h = compose_binary(f, g);
+                auto h = compose(f, g, Arb);
 
                 if (S.insert(h).second)
                 {
-                    if (h == target || memo.count(h))
+                    if (h == Tgt || memo.count(h))
                         return 1;
 
                     changed = true;
@@ -293,19 +251,17 @@ int gate_search(
     return -1;
 }
 
-template<typename ArbFunc>
 bool nand_search(
-    ArbFunc Arb,
+    vector<wire> Arb,
     ExhaustMode mode = ExhaustMode::FAST_NO_DEPTH,
-    unordered_set<vector<wire>, VectorHash> memo = {},
-    bool constant_basis = true){
+    unordered_set<vector<wire>, VectorHash> memo = {}){
 
-    vector<wire> target = {
+    vector<wire> Tgt = {
         T_POS, T_POS,  T_POS,
         T_POS, T_ZERO, T_ZERO,
         T_POS, T_ZERO, T_NEG
     };
-    return gate_search(Arb, target, mode, memo, constant_basis) > 0;
+    return gate_search(Arb, Tgt, mode, memo) > 0;
 }
 
 #endif

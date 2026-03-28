@@ -111,25 +111,25 @@ void exhaustive_search(bool constant_basis) {
     size_t universal_complete_count = 0;
     indicators::show_console_cursor(false);
     using namespace indicators;
-    // BlockProgressBar bar{
-    //     option::BarWidth{40},
-    //     option::ForegroundColor{Color::white},
-    //     option::PrefixText{"Exhaustive Search "},
-    //     option::ShowElapsedTime{true},
-    //     option::Start{"|"},
-    //     option::End{"|"},
-    //     option::ShowRemainingTime{true},
-    //     option::FontStyles{
-    //         vector<FontStyle>{FontStyle::bold}},
-    //     option::MaxProgress{TOTAL}
-    // };
+    BlockProgressBar bar{
+        option::BarWidth{40},
+        option::ForegroundColor{Color::white},
+        option::PrefixText{"Exhaustive Search "},
+        option::ShowElapsedTime{true},
+        option::Start{"|"},
+        option::End{"|"},
+        option::ShowRemainingTime{true},
+        option::FontStyles{
+            vector<FontStyle>{FontStyle::bold}},
+        option::MaxProgress{TOTAL}
+    };
 
     for (size_t mask = 0; mask < TOTAL; mask++) {
-        //bar.set_option(option::PostfixText{
-        //    to_string(mask) + "/" + to_string(TOTAL)
-        //    + " - " + to_string(memo_of_completes.size()) + " universal gates found"
-        //});
-        //bar.tick();
+        bar.set_option(option::PostfixText{
+            to_string(mask) + "/" + to_string(TOTAL)
+            + " - " + to_string(memo_of_completes.size()) + " universal gates found"
+        });
+        bar.tick();
         size_t temp = mask;
         array<wire, 9> table;
         for (int i = 0; i < 9; i++) {
@@ -146,7 +146,7 @@ void exhaustive_search(bool constant_basis) {
         bool iuc = is_unary_complete(arb);
         if (iuc){
             if (nand_search(arb, ExhaustMode::FAST_NO_DEPTH, memo_of_completes, constant_basis)){
-                generate_isomorphs(arb);
+                generate_isomorphs_new(arb);
             }
         }
     }

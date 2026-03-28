@@ -1,13 +1,14 @@
 #include "../includes/essentials.h"
 #include "../includes/debug_utils.h"
-#include "../includes/new_search_utils_unary.h"
-#include "../includes/new_search_utils_binary.h"
+#include "../includes/search_utils_unary.h"
+#include "../includes/search_utils_binary.h"
 #include <indicators/block_progress_bar.hpp>
 #include <indicators/cursor_control.hpp>
 
 
 int main(){
     int universal_count = 0;
+    int unary_count = 0;
     int TOTAL = 19683; // 3^9 possible gates
 
     indicators::show_console_cursor(false);
@@ -31,7 +32,8 @@ int main(){
     for (int i = 0; i < TOTAL; i++) {
         bar.set_option(option::PostfixText{
             to_string(i) + "/" + to_string(TOTAL) +
-            " - " + to_string(universal_count) + " universal"
+            " - " + to_string(unary_count) + " unary-complete, "
+            " - " + to_string(universal_count) + " universal gates"
         });
         bar.tick();
 
@@ -46,9 +48,11 @@ int main(){
             tmp /= 3;
         }
         vector<wire> gate = get_vector(string_to_gate(gate_str));
-        if (unary_exhaust(gate, ExhaustMode::FAST_MODE).size() == 27)
+        if (unary_exhaust(gate, ExhaustMode::FAST_MODE).size() == 27){
+            unary_count++;
             if(nand_search(gate, ExhaustMode::FAST_NO_DEPTH, {}))
                 universal_count++;
+        }
     }
 
     auto duration = chrono::duration_cast<chrono::microseconds>(
