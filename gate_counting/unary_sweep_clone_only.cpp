@@ -1,6 +1,7 @@
 #include "../includes/essentials.h"
 #include "../includes/debug_utils.h"
 #include "../includes/search_utils_unary.h"
+#include "../includes/search_utils_binary.h"
 
 int main(){
     auto start = chrono::high_resolution_clock::now();
@@ -28,5 +29,8 @@ int main(){
     );
     cout << "Universal gates: " << universal_count << " / 19683" << endl;
     cout << "Time taken: " << duration.count() << " ms" << endl;
+    cout << "Total NAND checks: " << nand_checks << endl;
+    cout << "Total Unary checks: " << unary_checks << endl;
+    
     return 0;
 }

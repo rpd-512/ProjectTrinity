@@ -55,7 +55,7 @@ int main(){
         }
     }
 
-    auto duration = chrono::duration_cast<chrono::microseconds>(
+    auto duration = chrono::duration_cast<chrono::milliseconds>(
         chrono::high_resolution_clock::now() - start
     );
     cout << "Universal gates: " << universal_count << " / 19683" << endl;
