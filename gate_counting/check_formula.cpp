@@ -37,7 +37,23 @@ int main(){
     //    return G(G(x, G(y, x)), G(G(G(G(y, x), y), x), y));
     //};
     //print_matrix(get_vector(Cir));
-    vector<wire> Arb = decode9(451);
+    //vector<wire> Arb = decode9(451);
+    vector<wire> Arb = get_vector(string_to_gate("++++-+++0"));
+    print_matrix(Arb);
+
+    auto s2 = chrono::high_resolution_clock::now();
+    auto [sum_gates, sum_depth] = gate_search(Arb, SumTgt, ExhaustMode::FAST_MODE,{}, true);
+    cout << "===== SUM TARGET =====\n";
+    cout << "Gates used: " << sum_gates << endl;
+    cout << "Depth: " << sum_depth << endl;
+    auto [carry_gates, carry_depth] = gate_search(Arb, CarryTgt, ExhaustMode::FAST_MODE,{}, true);
+    cout << "===== CARRY TARGET =====\n";
+    cout << "Gates used: " << carry_gates << endl;
+    cout << "Depth: " << carry_depth << endl;
+    auto e2 = chrono::high_resolution_clock::now();
+    auto duration2 = chrono::duration_cast<chrono::microseconds>(e2 - s2);
+    cout << "Execution time: " << duration2.count() << " microseconds\n";
+
     
     auto s1 = chrono::high_resolution_clock::now();
     auto [g1, d1] = gate_search_unified(Arb, SumTgt, OptMode::DEPTH_OPTIMAL);
@@ -53,18 +69,6 @@ int main(){
     cout << "Execution time: " << duration.count() << " microseconds\n";
 
 
-    auto s2 = chrono::high_resolution_clock::now();
-    auto [sum_gates, sum_depth] = gate_search(Arb, SumTgt, ExhaustMode::FAST_MODE,{}, true);
-    cout << "===== SUM TARGET =====\n";
-    cout << "Gates used: " << sum_gates << endl;
-    cout << "Depth: " << sum_depth << endl;
-    auto [carry_gates, carry_depth] = gate_search(Arb, CarryTgt, ExhaustMode::FAST_MODE,{}, true);
-    cout << "===== CARRY TARGET =====\n";
-    cout << "Gates used: " << carry_gates << endl;
-    cout << "Depth: " << carry_depth << endl;
-    auto e2 = chrono::high_resolution_clock::now();
-    auto duration2 = chrono::duration_cast<chrono::microseconds>(e2 - s2);
-    cout << "Execution time: " << duration2.count() << " microseconds\n";
 
     return 0;
 }
