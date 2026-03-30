@@ -148,7 +148,7 @@ def formula_size_search(gate_tt, targets, max_size=40):
 if __name__ == "__main__":
     gate_idx = 451  # change this
     gate = decode9(gate_idx)
-
+    print(gate)
     print(f"Gate index: {gate_idx}")
     print(f"Truth table: {gate}")
 

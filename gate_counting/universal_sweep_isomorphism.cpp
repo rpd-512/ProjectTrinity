@@ -2,6 +2,7 @@
 #include "../includes/debug_utils.h"
 #include "../includes/search_utils_unary.h"
 #include "../includes/search_utils_binary.h"
+#include "../includes/optimal_search_utils_binary.h"
 #include <indicators/block_progress_bar.hpp>
 #include <indicators/cursor_control.hpp>
 
@@ -70,6 +71,11 @@ int main(){
         option::MaxProgress{TOTAL}
     };
 
+    vector<wire> nand = {
+        T_POS, T_POS, T_POS,
+        T_POS, T_ZERO, T_ZERO,
+        T_POS, T_ZERO, T_NEG
+    };
 
     auto start = chrono::high_resolution_clock::now();
 
@@ -97,7 +103,8 @@ int main(){
 
         if (unary_exhaust(gate, ExhaustMode::FAST_MODE).size() == 27){
             unary_count++;
-            if(nand_search(gate, ExhaustMode::FAST_NO_DEPTH, memo_of_completes))
+            if(gate_search_unified(gate, nand, OptMode::DEPTH_OPTIMAL, memo_of_completes).first != -1)
+            //if(nand_search(gate, ExhaustMode::FAST_NO_DEPTH, memo_of_completes))
                 generate_isomorphs(gate, true);
         }
         else {

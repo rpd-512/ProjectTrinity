@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <limits.h>
 #define T_NEG 0
 #define T_ZERO 1
 #define T_POS 2
