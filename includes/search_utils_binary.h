@@ -12,7 +12,6 @@
 #include "search_utils_unary.h"
 
 template<typename Func>
-
 vector<wire> get_binary_vector(Func f)
 {
     vector<wire> v(9);
@@ -27,7 +26,10 @@ vector<wire> get_binary_vector(Func f)
     return v;
 }
 
-int gate_search(
+static int nand_checks = 0;
+
+// Returns {gate_count, depth} or {-1, -1} if not found
+pair<int,int> gate_search(
     vector<wire> Arb, // Arbitrary Function
     vector<wire> Tgt, // Target function to generate
     ExhaustMode mode = ExhaustMode::FAST_MODE,
@@ -45,12 +47,11 @@ int gate_search(
     if (DEBUG)
     {
         // map: truth-table -> {expression string, gate depth}
-        unordered_map<vector<wire>, pair<string,int>, VectorHash> S;
+        unordered_map<vector<wire>, pair<string, pair<int, int>>, VectorHash> S;
 
-        S[get_binary_vector(P1)] = {"x",        0};
-        S[get_binary_vector(P2)] = {"y",        0};
-        S[get_binary_vector(G)]  = {"Arb(x,y)", 1};
-
+        S[get_binary_vector(P1)] = {"x",        {0, 0}};
+        S[get_binary_vector(P2)] = {"y",        {0, 0}};
+        S[get_binary_vector(G)]  = {"Arb(x,y)", {1, 1}};
         for (const auto& p : S)
         {
             const auto& [expr, d] = p.second;
@@ -64,7 +65,7 @@ int gate_search(
                     print_vector(p.first);
                     auto end = chrono::high_resolution_clock::now();
                     auto duration = chrono::duration_cast<chrono::microseconds>(end - start);
-                    printf("\nGates used: %d\n", d);
+                    printf("\nGates used: %d\n", d.first);
                     printf("Functions generated: %zu\n", S.size());
                     printf("Execution time: %ld microseconds\n", duration.count());
                     printf("======================\n");
@@ -80,7 +81,7 @@ int gate_search(
                     print_vector(p.first);
                     auto end = chrono::high_resolution_clock::now();
                     auto duration = chrono::duration_cast<chrono::microseconds>(end - start);
-                    printf("\nGates used: %d\n", d);
+                    printf("\nGates used: %d\n", d.first);
                     printf("Functions generated: %zu\n", S.size());
                     printf("Execution time: %ld microseconds\n", duration.count());
                     printf("=============================\n");
@@ -94,20 +95,19 @@ int gate_search(
         while (changed)
         {
             changed = false;
-
-            vector<pair<vector<wire>, pair<string,int>>> current(
+            vector<pair<vector<wire>, pair<string,pair<int, int>>>> current(
                 S.begin(), S.end());
 
             for (const auto& p1 : current)
             for (const auto& p2 : current)
             {
                 auto h = compose(p1.first, p2.first, Arb);
-                int d = p1.second.second + p2.second.second + 1;
-                string expr = "Arb(" + p1.second.first + ", " + p2.second.first + ")";
+                int gc = p1.second.second.first + p2.second.second.first + 1;
+                int dp = max(p1.second.second.second, p2.second.second.second) + 1;                string expr = "Arb(" + p1.second.first + ", " + p2.second.first + ")";
                 if (S.find(h) == S.end())
                 {
 
-                    S[h] = {expr, d};
+                    S[h] = {expr, {gc, dp}};
                     changed = true;
 
                     if (h == Tgt)
@@ -119,12 +119,12 @@ int gate_search(
                             print_vector(h);
                             auto end = chrono::high_resolution_clock::now();
                             auto duration = chrono::duration_cast<chrono::microseconds>(end - start);
-                            printf("\nGates used: %d\n", d);
+                            printf("\nGates used: %d\n", gc);
                             printf("Functions generated: %zu\n", S.size());
                             printf("Execution time: %ld microseconds\n", duration.count());
                             printf("======================\n");
                         }
-                        return d;
+                        return {gc, dp};
                     }
                     if (memo.count(h))
                     {
@@ -135,17 +135,18 @@ int gate_search(
                             print_vector(h);
                             auto end = chrono::high_resolution_clock::now();
                             auto duration = chrono::duration_cast<chrono::microseconds>(end - start);
-                            printf("\nGates used: %d\n", d);
+                            printf("\nGates used: %d\n", gc);
                             printf("Functions generated: %zu\n", S.size());
                             printf("Execution time: %ld microseconds\n", duration.count());
                             printf("=============================\n");
                         }
-                        return d;
+                        return {gc, dp};
                     }
                 }
-                else if (d < S[h].second)
+                //else if (gc < S[h].second.first || (gc == S[h].second.first && dp < S[h].second.second))
+                else if (dp < S[h].second.second || (dp == S[h].second.second && gc < S[h].second.first))
                 {
-                    S[h] = {expr, d};
+                    S[h] = {expr, {gc, dp}};
                     changed = true;
                 }
 
@@ -155,18 +156,17 @@ int gate_search(
             printf("\ntarget not generated.\n");
             printf("Total functions: %zu\n", S.size());
         }
-        return -1;
+        return {-1, -1};
     }
 
     else if(mode == ExhaustMode::FAST_MODE)
     {
         // unordered_map: truth-table -> gate depth
-        unordered_map<vector<wire>, int, VectorHash> S;
+        unordered_map<vector<wire>, pair<int, int>, VectorHash> S;
 
-        S[get_binary_vector(P1)] = 0;
-        S[get_binary_vector(P2)] = 0;
-        S[get_binary_vector(G)] = 1;
-
+        S[get_binary_vector(P1)] = {0, 0};
+        S[get_binary_vector(P2)] = {0, 0};
+        S[get_binary_vector(G)]  = {1, 1};
         for (const auto& p : S)
         {
             if (p.first == Tgt || memo.count(p.first))
@@ -174,12 +174,12 @@ int gate_search(
         }
 
         bool changed = true;
-
+        
         while (changed)
         {
             changed = false;
 
-            vector<pair<vector<wire>, int>> current(
+            vector<pair<vector<wire>, pair<int, int>>> current(
                 S.begin(), S.end());
 
             for (const auto& [f, df] : current)
@@ -187,25 +187,27 @@ int gate_search(
             {
                 auto h = compose(f, g, Arb);
 
-                int d = df + dg + 1;
+                int gc = df.first + dg.first + 1;
+                int dp = max(df.second, dg.second) + 1;
                 if (!S.count(h)){
-                    S[h] = d;
+                    S[h] = {gc, dp};
                     changed = true;
 
                     if (h == Tgt || memo.count(h))
-                        return d;
+                        return {gc, dp};
 
                     if (S.size() == 19683)
-                        return -1;
+                        return {-1, -1};
                 }
-                else if (d < S[h]){
-                    S[h] = d;
+                else if (gc < S[h].first || (gc == S[h].first && dp < S[h].second)){
+                //else if (dp < S[h].second || (dp == S[h].second && gc < S[h].first)){
+                    S[h] = {gc, dp};
                     changed = true;
                 }
             }
         }
 
-        return -1;
+        return {-1, -1};
     }
 
     else if (mode == ExhaustMode::FAST_NO_DEPTH)
@@ -218,7 +220,7 @@ int gate_search(
 
         for (const auto& p : S)
             if (p == Tgt || memo.count(p))
-                return 1;
+                return {1, 1};
 
         bool changed = true;
 
@@ -236,19 +238,19 @@ int gate_search(
                 if (S.insert(h).second)
                 {
                     if (h == Tgt || memo.count(h))
-                        return 1;
+                        return {1,1};
 
                     changed = true;
 
                     if (S.size() == 19683)
-                        return -1;
+                        return {-1,-1};
                 }
             }
         }
 
-        return -1;
+        return {-1,-1};
     }
-    return -1;
+    return {-1,-1}; // should never reach here
 }
 
 bool nand_search(
@@ -261,7 +263,8 @@ bool nand_search(
         T_POS, T_ZERO, T_ZERO,
         T_POS, T_ZERO, T_NEG
     };
-    return gate_search(Arb, Tgt, mode, memo) > 0;
+    nand_checks++;
+    return gate_search(Arb, Tgt, mode, memo).first > 0;
 }
 
 #endif

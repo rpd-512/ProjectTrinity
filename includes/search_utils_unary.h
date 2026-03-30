@@ -15,6 +15,8 @@ enum class ExhaustMode {
     FAST_MODE
 };
 
+static int unary_checks = 0;
+
 set<vector<wire>> generate_all_unary_functions(){
     set<vector<wire>> result;
     for (size_t i=0; i < 3; i++)
@@ -58,7 +60,7 @@ unordered_set<vector<wire>,VectorHash> unary_exhaust(
     auto Un1 = [Arb](wire a){ return Arb[4*a]; };
 
     auto start = chrono::high_resolution_clock::now();
-
+    unary_checks++;
     if (DEBUG) {
 
         map<vector<wire>, string> S;

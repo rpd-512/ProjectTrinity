@@ -3,186 +3,159 @@
 #include "../includes/search_utils_unary.h"
 #include "../includes/search_utils_binary.h"
 
-#include <fstream>
-#include <csignal>
-#include <atomic>
-#include <thread>
-#include <future>
 #include <indicators/block_progress_bar.hpp>
 #include <indicators/cursor_control.hpp>
 
+#include <fstream>
+#include <iostream>
+#include <vector>
+#include <string>
+#include <chrono>
 
-// ── Globals for signal handling ──────────────────────────────────────────────
-static std::atomic<bool> g_interrupted{false};
+using namespace std;
+using namespace indicators;
 
-void handle_sigint(int) {
-    g_interrupted.store(true);
-}
+// ─────────────────────────────────────────────────────────────
+// Convert "+-0" string → vector<wire>
+// ─────────────────────────────────────────────────────────────
+vector<wire> parse_gate(const string& s) {
+    vector<wire> g(9);
 
-// Run gate_search in a background thread; returns -1 if interrupted mid-search.
-int interruptible_gate_search(auto Arb, const vector<wire>& target,
-                              ExhaustMode mode) {
-    std::promise<int> promise;
-    auto future = promise.get_future();
-
-    std::thread worker([&]() {
-        promise.set_value(
-            gate_search(Arb, target, mode, {}, false, true)
-        );
-    });
-
-    // Poll until the worker finishes or we get a signal.
-    while (future.wait_for(std::chrono::milliseconds(100)) ==
-           std::future_status::timeout) {
-        if (g_interrupted.load()) {
-            // Detach — the thread will finish on its own after main exits.
-            worker.detach();
-            return -1;
+    for (int i = 0; i < 9; i++) {
+        if (s[i] == '+') g[i] = T_POS;
+        else if (s[i] == '-') g[i] = T_NEG;
+        else if (s[i] == '0') g[i] = T_ZERO;
+        else {
+            cerr << "Invalid character in gate: " << s[i] << endl;
+            exit(1);
         }
     }
 
-    worker.join();
-    return future.get();
+    return g;
 }
 
-// ── File helpers ──────────────────────────────────────────────────────────────
-vector<string> load_gates(const string& filename) {
-    ifstream file(filename);
-    string line;
-    vector<string> gates;
-    while (getline(file, line))
-        gates.push_back(line);
-    file.close();
-    return gates;
-}
 
-// Checkpoint format: one "count gate_string" line per completed entry.
-// We load whatever is already in gate_counts.txt so we can skip those gates.
-unordered_map<string, int> load_checkpoint(const string& filename) {
-    unordered_map<string, int> done;
-    ifstream f(filename);
-    if (!f.is_open()) return done;
-    string line;
-    while (getline(f, line)) {
-        if (line.empty()) continue;
-        auto space = line.find(' ');
-        if (space == string::npos) continue;
-        int   count = stoi(line.substr(0, space));
-        string gate =      line.substr(space + 1);
-        done[gate] = count;
+
+int main(int argc, char* argv[]) {
+    string save_file = "gate_metrics.csv";
+    if (argc < 2) {
+        cerr << "Usage: " << argv[0] << " <input_file.txt>\n";
+        return 1;
     }
-    return done;
-}
 
-// Append a single result immediately so we never lose it on interrupt.
-void append_result(const string& filename, const string& gate, int count) {
-    ofstream f(filename, ios::app);
-    f << count << " " << gate << "\n";
-}
+    string input_file = argv[1];
 
-// Re-write the output file sorted by gate count (called at the very end).
-void write_sorted(const string& filename,
-                  const unordered_map<string, int>& results) {
-    auto cmp = [](const pair<string,int>& a, const pair<string,int>& b){
-        return a.second < b.second;
-    };
-    multiset<pair<string,int>, decltype(cmp)> sorted_set(cmp);
-    for (const auto& kv : results)
-        sorted_set.insert(kv);
-
-    ofstream out(filename);
-    for (const auto& [gate, count] : sorted_set)
-        out << count << " " << gate << "\n";
-}
+    // ── Load already processed gates from CSV ────────────────────
+    unordered_set<string> already_done;
+    {
+        ifstream existing(save_file);
+        string row;
+        bool header = true;
+        while (getline(existing, row)) {
+            if (header) { header = false; continue; }
+            if (!row.empty())
+                already_done.insert(row.substr(0, row.find(',')));
+        }
+    }
+    cout << "Skipping " << already_done.size() << " already processed gates\n";
 
 
-int main() {
-    // ── Signal setup ─────────────────────────────────────────────────────────
-    signal(SIGINT,  handle_sigint);
-    signal(SIGTERM, handle_sigint);
+    // ── First pass: count lines ───────────────────────────────
+    ifstream file_count(input_file);
+    int total_lines = 0;
+    string tmp;
+    while (getline(file_count, tmp)) {
+        if (!tmp.empty()) total_lines++;
+    }
+    file_count.close();
 
-    const string CHECKPOINT_FILE = "gate_counts.txt";
+    // ── Open actual file ──────────────────────────────────────
+    ifstream file(input_file);
+    if (!file.is_open()) {
+        cerr << "Failed to open file: " << input_file << endl;
+        return 1;
+    }
 
-    // ── Load inputs ───────────────────────────────────────────────────────────
-    vector<string> gate_strings = load_gates("../prove_math/universal_gates_constant_excluded.txt");
-
+    ofstream csv(save_file, ios::app);
+    
+    // Targets
     vector<wire> sum_gate = {
         T_POS,  T_NEG,  T_ZERO,
         T_NEG,  T_ZERO, T_POS,
         T_ZERO, T_POS,  T_NEG
     };
-    vector<wire> cry_gate = {
+
+    vector<wire> carry_gate = {
         T_NEG,  T_ZERO,  T_ZERO,
-        T_ZERO,  T_ZERO, T_ZERO,
+        T_ZERO, T_ZERO,  T_ZERO,
         T_ZERO, T_ZERO,  T_POS
     };
 
-    // ── Resume: find out which gates are already done ─────────────────────────
-    unordered_map<string, int> all_results = load_checkpoint(CHECKPOINT_FILE);
-    size_t already_done = all_results.size();
+    // ── Progress bar ──────────────────────────────────────────
+    show_console_cursor(false);
 
-    if (already_done > 0)
-        cout << "Resuming from checkpoint — " << already_done
-             << " / " << gate_strings.size() << " already done.\n";
-
-    // ── Progress bar ──────────────────────────────────────────────────────────
-    indicators::show_console_cursor(false);
-    using namespace indicators;
     BlockProgressBar bar{
         option::BarWidth{40},
         option::ForegroundColor{Color::white},
-        option::PrefixText{"Counting Gates for Sum+Carry "},
+        option::PrefixText{"Processing Gates"},
         option::ShowElapsedTime{true},
+        option::ShowRemainingTime{true},
         option::Start{"|"},
         option::End{"|"},
-        option::ShowRemainingTime{true},
-        option::FontStyles{vector<FontStyle>{FontStyle::bold}},
-        option::MaxProgress{gate_strings.size()}
+        option::MaxProgress{total_lines}
     };
 
-    // Fast-forward the bar past already-completed entries.
-    for (size_t k = 0; k < already_done; ++k)
-        bar.tick();
+    string line;
+    int count = 0;
 
-    // ── Main loop ─────────────────────────────────────────────────────────────
-    for (size_t i = 0; i < gate_strings.size(); ++i) {
+    auto start = chrono::high_resolution_clock::now();
 
-        // Check for Ctrl-C / SIGTERM between iterations.
-        if (g_interrupted.load()) {
-            cout << "\nInterrupted — progress saved to " << CHECKPOINT_FILE << "\n";
-            break;
+    // ─────────────────────────────────────────────────────────
+    // Main loop
+    // ─────────────────────────────────────────────────────────
+    while (getline(file, line)) {
+
+        if (line.empty()) continue;
+        if (line.size() != 9) continue;
+
+        if (already_done.count(line)) {
+            count++;
+            bar.tick();
+            continue;
         }
 
-        const string& gs = gate_strings[i];
-
-        // Skip if already computed in a previous run.
-        if (all_results.count(gs))
-            continue;
+        vector<wire> gate = parse_gate(line);
+        //cout << "Processing gate: " << line << endl;
+        auto sum_res = gate_search(gate, sum_gate, ExhaustMode::FAST_MODE);
+        //cout << "  Sum:   " << sum_res.first << " gates, depth " << sum_res.second << endl;
+        auto carry_res = gate_search(gate, carry_gate, ExhaustMode::FAST_MODE);
+        //cout << "  Carry: " << carry_res.first << " gates, depth " << carry_res.second << endl;
+        csv << line << ","
+            << sum_res.first   << "," << sum_res.second << ","
+            << carry_res.first << "," << carry_res.second
+            << "\n";
+        csv.flush();
+        count++;
 
         bar.set_option(option::PostfixText{
-            to_string(i) + "/" + to_string(gate_strings.size())
+            to_string(count) + "/" + to_string(total_lines)
         });
+
         bar.tick();
-
-        auto Arb = string_to_gate(gs);
-        int sgc  = interruptible_gate_search(Arb, sum_gate, ExhaustMode::FAST_MODE);
-
-        if (sgc == -1) {
-            // Interrupted mid-search — don't save a partial result for this gate.
-            cout << "\nInterrupted mid-search — this gate will be retried next run.\n";
-            break;
-        }
-
-        // Persist immediately so a crash/interrupt only loses the current item.
-        append_result(CHECKPOINT_FILE, gs, sgc);
-        all_results[gs] = sgc;
     }
 
-    indicators::show_console_cursor(true);
+    show_console_cursor(true);
 
-    // ── If we finished everything, re-sort the file ───────────────────────────
-    if (!g_interrupted.load()) {
-        cout << "\nAll done — writing sorted results to " << CHECKPOINT_FILE << "\n";
-        write_sorted(CHECKPOINT_FILE, all_results);
-    }
+    file.close();
+    csv.close();
+
+    auto duration = chrono::duration_cast<chrono::seconds>(
+        chrono::high_resolution_clock::now() - start
+    );
+
+    cout << "\nDone.\n";
+    cout << "Processed " << count << " gates\n";
+    cout << "Time: " << duration.count() << " seconds\n";
+
+    return 0;
 }
